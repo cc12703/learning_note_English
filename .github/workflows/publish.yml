@@ -1,0 +1,58 @@
+
+
+name: Docset Build and Publish
+on: 
+  push:
+    tags:
+      - "*"
+
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Prepare
+        uses: actions/setup-node@v2
+        with:
+            node-version: '12'
+      - run: sudo npm_config_user=root npm install -g @cc12703m/mddocsetbuilder@1.5.1
+
+
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+            path: './source'
+
+
+      - name: Build Docset
+        run: mddocsetbuilder ./source -o ./out -n learning_note_English -p tgz 
+        working-directory: ${{ github.workspace }}
+
+
+      - name: Update to release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: Release Document
+          draft: false
+          prerelease: false
+      - id: update_release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}  
+          asset_path: ./out/learning_note_English.docset.tgz
+          asset_name: learning_note_English.docset.tgz
+          asset_content_type: application/tgz
+
+
+
+
+        
+      
+        
