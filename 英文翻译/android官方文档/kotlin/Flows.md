@@ -331,6 +331,130 @@ class FirestoreUserEventsDataSource(
 
 
 
+
+## 测试flow
+
+### 概述
+* 对于使用flow的测试使用哪种测试方法，取决于测试的对象是输入还是输出
+* 如果测试对象是监听flow的，你可以使用fake依赖来生成flow
+* 如果测试对象是导出一个flow的，你可以读一个值、校验一个值
+
+
+### 创建一个fake生产者
+* 当测试对象是一个flow的消费者时，一个通用的测试方法就是使用一个fake实现来替换生产者
+* 例子：一个类监听一个从两个数据源获取数据的repository
+    * 图示![](https://gitee.com/cc12703/figurebed/raw/master/img/20210518001342.png)
+* 为了使测试具有确定性，可以替换repository使其依赖于一个fake repository，可以发送相同的fake数据
+    * 图示 ![](https://gitee.com/cc12703/figurebed/raw/master/img/20210518001652.png)
+
+
+#### 步骤
+1. 使用flow构建器，在flow中发送预定义的值
+    ```kotlin
+    class MyFakeRepository : MyRepository {
+        fun observeCount() = flow {
+            emit(ITEM_1)
+        }
+    }
+    ```
+1. 测试时，将fake repository注入替换真实的实现
+    ```kotlin
+    @Test
+    fun myTest() {
+        // 使用fake依赖创建一个类型
+        val sut = MyUnitUnderTest(MyFakeRepository())
+        // 触发并校验
+        ...
+    }
+    ```
+
+
+### 断言flow的发送
+* 当测试对象导出一个flow时，测试需要断言数据流中的元素是否正确
+* 取决于测试的需求，你可以检查首个发射值或者最后几个来自flow的值
+
+#### 示例1
+```kotlin
+@Test
+fun myRepositoryTest() = runBlocking {
+    // 创建一个从两个数据源合并值的repository
+    val repository = MyRepository(fakeSource1, fakeSource2)
+
+    // 当repository发送一个值时
+    val firstItem = repository.counter.first() // 返回flow中的首个值 
+
+    // 使用AssertJ来检查该值是否是期待的值
+    assertThat(firstItem, isEqualTo(ITEM_1) 
+}
+```
+* 通过调用first()可以获取flow中的首个值
+
+#### 示例2
+```kotlin
+@Test
+fun myRepositoryTest() = runBlocking {
+    // 创建一个使用fake数据源的repository，会发送ALL_MESSAGES
+    val messages = repository.observeChatMessages().toList()
+
+    assertThat(messages, isEqualTo(ALL_MESSAGES))
+}
+```
+* 如果需要检查多个值，可以使用toList()
+* 该函数会使flow等待源发送完全部的值，返回一个列表
+    * 该函数只能用于有效的数据流
+
+
+#### 示例3
+```kotlin
+// 获取第二个数据项
+outputFlow.drop(1).first()
+
+// 获取开始的5个数据项
+outputFlow.take(5).toList()
+
+// 获取开始的5个不重复的数据项
+outputFlow.take(5).toSet()
+
+// 获取满足条件最先的2个的数据项
+outputFlow.takeWhile(predicate).take(2).toList()
+
+// 获取满足条件的首个数据项
+outputFlow.firstWhile(predicate)
+
+// 对每个值应用一个变化，并获取5个数据项
+outputFlow.map(transformation).take(5)
+
+// Takes the first item verifying that the flow is closed after that
+// 获取首个值，来验证该flow是否已经关闭
+outputFlow.single()
+
+// 有限的数据流
+// 校验该flow是否发送了特定的N个元素
+outputFlow.count()
+outputFlow.count(predicate)
+```
+
+
+### 将CoroutineDispatcher作为依赖
+* 如果测试对象需要将CoroutineDispatcher作为一个依赖
+    * 可以创建一个TestCoroutineDispatcher实例
+    * 并使用runBlockingTeset来执行测试代码
+* 示例
+    ```kotlin
+    private val coroutineDispatcher = TestCoroutineDispatcher()
+    private val uut = MyUnitUnderTest(coroutineDispatcher)
+
+    @Test
+    fun myTest() = coroutineDispatcher.runBlockingTest {
+        // 测试代码
+    }
+    ```
+
+
+
+
+
+
 ## StateFlow和ShareFlow
 
 ### 概述
@@ -429,3 +553,147 @@ class LatestNewsActivity : AppCompatActivity() {
 
 
 ### StateFlow、Flow和LiveData
+* StateFlow和LiveData很相似
+    * 都是可观测数据的保存类
+    * 在使用时都遵循相同的模式
+
+#### StateFlow和LiveData的不同点
+* StateFlow生成时需要传入一个初始状态，LiveData不需要
+* LiveData.observe()在视图进入STOPPED状态时，会自动注销消费者。但是StateFlow不会
+
+
+#### 示例1
+手动停止flow的收集
+```kotlin
+class LatestNewsActivity : AppCompatActivity() {
+    ...
+    // 协程监听界面状态
+    private var uiStateJob: Job? = null
+
+    override fun onStart() {
+        super.onStart()
+        // 当界面可见时，启动收集
+        uiStateJob = lifecycleScope.launch {
+            latestNewsViewModel.uiState.collect { uiState -> ... }
+        }
+    }
+
+    override fun onStop() {
+        // 当视图进入后台时，停止收集
+        uiStateJob?.cancel()
+        super.onStop()
+    }
+}
+```
+
+#### 示例2
+将flow转化成LiveData
+```kotlin
+class LatestNewsActivity : AppCompatActivity() {
+    ...
+    override fun onCreate(savedInstanceState: Bundle?) {
+        ...
+        latestNewsViewModel.uiState.asLiveData().observe(owner = this) { state ->
+            // 处理界面状态
+        }
+    }
+}
+```
+
+
+
+### 使用shareIn使flow变热
+* StateFlows是一种热flow
+    * flow被收集后就一直存在在内存中
+    * 任何到flow的引用都来自GC根
+* 可以使用shareIn操作来将冷flow转换成热的
+
+
+#### 用途
+* 以Kotlin flow中的callbackFlow为例，通过使用shareIn在Firestore和每个收集者之间共享检索到的数据，这样不用给每个收集者创建一个flow
+
+#### shareIn参数
+* 一个用于共享flow的CoroutineScope，该scope的存活期需要比任何共享该flow的消费者更长
+* 给每个收集者重发送数据项的个数
+* 启动策略
+
+
+#### 示例
+```kotlin
+class NewsRemoteDataSource(...,
+    private val externalScope: CoroutineScope,
+) {
+    val latestNews: Flow<List<ArticleHeadline>> = flow {
+        ...
+    }.shareIn(
+        externalScope,
+        replay = 1,
+        started = SharingStarted.WhileSubscribed()
+    )
+}
+```
+* lastestNews流会重发送最后一个数据项到新的收集者
+* 保持激活状态会和externalScope的存活期一样久
+
+#### 启动策略
+* SharingStarted.WhileSubscribed：当有激活的订阅者时，保持上游生产者在激活状态
+* SharingStarted.Eagerly：当有订阅者时，立刻启动生产者
+* SharingStarted.Lazily：
+
+
+
+### SharedFlow
+* shareIn函数返回一个SharedFlow
+    * 一个热flow，可以发送给所有收集该flow的消费者
+    * 一个SharedFlow就是一个高可配置的，泛化的StateFlow
+* 可以不使用shareIn()来创建一个SharedFlow
+
+
+#### 示例
+```kotlin
+// 该类用于刷新应用的内容
+class TickHandler(
+    private val externalScope: CoroutineScope,
+    private val tickIntervalMs: Long = 5000
+) {
+    private val _tickFlow = MutableSharedFlow<Unit>(replay = 0)
+    val tickFlow: SharedFlow<Event<String>> = _tickFlow
+
+    init {
+        externalScope.launch {
+            while(true) {
+                _tickFlow.emit(Unit)
+                delay(tickIntervalMs)
+            }
+        }
+    }
+}
+
+class NewsRepository(
+    ...,
+    private val tickHandler: TickHandler,
+    private val externalScope: CoroutineScope
+) {
+    init {
+        externalScope.launch {
+            // 监听tick的更新
+            tickHandler.tickFlow.collect {
+                refreshLatestNews()
+            }
+        }
+    }
+
+    suspend fun refreshLatestNews() { ... }
+    ...
+}
+```
+* 使用SharedFlow给应用的其他部分发送ticks，保证所有的内容都在同时进行周期刷新
+* 除了获取最新新闻，还可以使用收藏的主题来刷新用户信息
+
+
+#### 自定义行为
+* replay：设置给新订阅者发送先前发送值的重发送个数
+* onBufferOverflow：用于设置缓冲区满后的策略
+    * BufferOverflow.SUSPEND：会挂起调用者
+    * BufferOverflow.LATEST：保留最新的数据
+    * BufferOverflow.DROP_OLDEST: 丢弃最老的数据
