@@ -49,7 +49,8 @@ jobs:
           asset_path: ./out/learning_note_English.docset.tgz
           asset_name: learning_note_English.docset.tgz
           asset_content_type: application/tgz
-
+      - name: test
+        run: echo "${{ steps.update_release.outputs.browser_download_url }} - ${{ steps.create_release.outputs.id }} - ${{ github.ref }}"
 
 
 
