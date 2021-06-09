@@ -52,7 +52,6 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v3
         with: 
-          images: cc12703/learning_note_English
           tags: type=ref,event=tag
       - name: test
         run: echo "${{ steps.update_release.outputs.browser_download_url }} - - ${{ steps.meta.outputs.tags }}"
