@@ -51,7 +51,7 @@ jobs:
           asset_content_type: application/tgz
 
       - name: submit info
-      - id: meta
+        id: meta
         uses: docker/metadata-action@v3
         with: 
           images: cc12703/learning_note_English
