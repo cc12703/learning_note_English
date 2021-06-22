@@ -32,7 +32,7 @@ dependencies {
 ```
 
 ### 库架构
-**描述Pagin库的主要组件
+**描述Pagin库的主要组件**
 
 #### PagedList
 * PagedList是关键组件，用于分块、分页加载应用数据

@@ -12,7 +12,7 @@
 ### 概述
 * 该库可以帮助你加载、分页显示来自一个大数据库的数据，数据可以来自于本地、网络
 * 该库允许你更有效率的使用网络带宽和系统资源
-* 该库可以和其他的JetPac库整合使用
+* 该库可以和其他的JetPack库整合使用
 
 
 ### 优点
@@ -26,7 +26,7 @@
 ### 安装
 ```groovy
 dependencies {
-  def paging_version = "3.0.0-alpha12"
+  def paging_version = "3.0.0"
 
   implementation "androidx.paging:paging-runtime:$paging_version"
 
